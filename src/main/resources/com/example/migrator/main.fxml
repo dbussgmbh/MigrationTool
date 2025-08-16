@@ -1,53 +1,61 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<?import javafx.scene.layout.*?>
-<?import javafx.scene.control.*?>
-<BorderPane xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml" fx:controller="com.example.migrator.MainController">
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+
+<BorderPane xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.migrator.MainController">
     <left>
-        <VBox spacing="8" prefWidth="280" style="-fx-padding: 10;">
+        <VBox prefWidth="280" spacing="8" style="-fx-padding: 10;">
             <children>
-                <Button text="Konfiguration" fx:id="configButton"/>
-                <Button text="Tabellen laden" fx:id="loadTablesButton"/>
-                <Label text="Verfügbare Tabellen"/>
-                <ListView fx:id="availableTablesList" prefHeight="300"/>
+                <Button fx:id="configButton" text="Konfiguration" />
+                <Button fx:id="loadTablesButton" text="Tabellen laden" />
+                <Label text="Verfügbare Tabellen" />
+                <ListView fx:id="availableTablesList" prefHeight="300" />
                 <HBox spacing="6">
                     <children>
-                        <Button text="Add" fx:id="addButton"/>
-                        <Button text="Add All" fx:id="addAllButton"/>
+                        <Button fx:id="addButton" text="Add" />
+                        <Button fx:id="addAllButton" text="Add All" />
                     </children>
                 </HBox>
                 <HBox spacing="6">
                     <children>
-                        <Button text="Remove" fx:id="removeButton"/>
-                        <Button text="Remove All" fx:id="removeAllButton"/>
+                        <Button fx:id="removeButton" text="Remove" />
+                        <Button fx:id="removeAllButton" text="Remove All" />
                     </children>
                 </HBox>
                 <HBox spacing="6">
                     <children>
-                        <Label text="Batch Size:"/>
-                        <TextField fx:id="batchSizeField" promptText="1000"/>
+                        <Label text="Batch Size:" />
+                        <TextField fx:id="batchSizeField" promptText="1000" />
                     </children>
                 </HBox>
-                <Button text="Start Counts" fx:id="startButton"/>
+                <Button fx:id="startButton" text="Start Counts" />
             </children>
         </VBox>
     </left>
     <center>
         <VBox spacing="8" style="-fx-padding: 10;">
             <children>
-                <TableView fx:id="overviewTable" prefHeight="600">
+                <TableView fx:id="overviewTable" VBox.vgrow="ALWAYS">
                     <columns>
-                        <TableColumn fx:id="colTable" text="Tabelle" prefWidth="160"/>
-                        <TableColumn fx:id="colSrcCount" text="Quelle" prefWidth="90"/>
-                        <TableColumn fx:id="colDstCount" text="Ziel" prefWidth="90"/>
-                        <TableColumn fx:id="colTransferred" text="Übertragen" prefWidth="100"/>
-                        <TableColumn fx:id="colRate" text="Rate (rows/s)" prefWidth="110"/>
-                        <TableColumn fx:id="colProgress" text="Progress" prefWidth="140"/>
-                        <TableColumn fx:id="colStatus" text="Status" prefWidth="200"/>
-                        <TableColumn fx:id="colMigrate" text="Migrieren" prefWidth="90"/>
-                        <TableColumn fx:id="colStop" text="Stop" prefWidth="70"/>
-                        <TableColumn fx:id="colShowWhere" text="WHERE" prefWidth="80"/>
-                        <TableColumn fx:id="colDeleteDst" text="Ziel löschen" prefWidth="110"/>
-                        <TableColumn fx:id="colCreateDst" text="Ziel anlegen" prefWidth="110"/>
+                        <TableColumn fx:id="colTable" prefWidth="160" text="Tabelle" />
+                        <TableColumn fx:id="colSize" prefWidth="110" text="Größe"/>
+                        <TableColumn fx:id="colSrcCount" prefWidth="90" text="Quelle" />
+                        <TableColumn fx:id="colDstCount" prefWidth="90" text="Ziel" />
+                        <TableColumn fx:id="colTransferred" prefWidth="100" text="Übertragen" />
+                        <TableColumn fx:id="colRate" prefWidth="110" text="Rate (rows/s)" />
+                        <TableColumn fx:id="colProgress" prefWidth="140" text="Progress" />
+                        <TableColumn fx:id="colStatus" prefWidth="200" text="Status" />
+
+                        <TableColumn fx:id="colAction" prefWidth="360" text="Aktion" sortable="false" reorderable="false"/>
+
                     </columns>
                 </TableView>
             </children>

@@ -16,6 +16,8 @@ public class TableItem {
     private DBManager.StopSignal stopSignal = new DBManager.StopSignal();
     private final BooleanProperty deleting = new SimpleBooleanProperty(false);
 
+    private final StringProperty  size        = new SimpleStringProperty("n/a");
+
     public TableItem(String table) { this.tableName.set(table); }
     public TableItem(String table, String srcCount, String dstCount) {
         this.tableName.set(table);
@@ -57,4 +59,9 @@ public class TableItem {
     public boolean isDeleting() { return deleting.get(); }
     public void setDeleting(boolean v) { deleting.set(v); }
     public BooleanProperty deletingProperty() { return deleting; }
+
+    public String getSize() { return size.get(); }
+    public void setSize(String v) { size.set(v); }
+    public StringProperty sizeProperty() { return size; }
+
 }

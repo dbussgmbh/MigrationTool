@@ -13,6 +13,7 @@ public class DBManager {
         private volatile boolean stopped;
         public void stop() { stopped = true; }
         public boolean isStopped() { return stopped; }
+        public void reset() { stopped = false; }
     }
 
     public interface ProgressListener { void onBatch(long totalTransferred, double rowsPerSec); }
@@ -362,6 +363,47 @@ public class DBManager {
         return "'" + s + "'";
     }
 
+    public static long getTableSizeBytes(Connection conn, String table) throws SQLException {
+        final String sql =
+                "WITH t AS (SELECT UPPER( '" + table +"' ) AS table_name FROM dual),\n" +
+                        "idx AS (SELECT ui.index_name AS segment_name FROM user_indexes ui JOIN t ON ui.table_name = t.table_name),\n" +
+                        "lob AS (\n" +
+                        "  SELECT ul.segment_name FROM user_lobs ul JOIN t ON ul.table_name = t.table_name\n" +
+                        "  UNION ALL\n" +
+                        "  SELECT ul.index_name   FROM user_lobs ul JOIN t ON ul.table_name = t.table_name\n" +
+                        ")\n" +
+                        "SELECT ROUND(SUM(us.bytes)/1024/1024, 2) AS total_size_mb\n" +
+                        "FROM   user_segments us\n" +
+                        "WHERE  (us.segment_type = 'TABLE' AND us.segment_name = (SELECT table_name FROM t))\n" +
+                        "   OR  us.segment_name IN (SELECT segment_name FROM idx)\n" +
+                        "   OR  us.segment_name IN (SELECT segment_name FROM lob)";
 
+        System.out.println("Size SQL: " + sql);
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+//            String tab = table.toUpperCase();
+//            int i = 1;
+//            ps.setString(i++, tab); // TABLE/IOT
+//            ps.setString(i++, tab); // TABLE PARTITION
+//            ps.setString(i++, tab); // TABLE SUBPARTITION
+//            ps.setString(i++, tab); // LOBSEGMENT
+//            ps.setString(i++, tab); // LOB PARTITION
+//            ps.setString(i  , tab); // LOB SUBPARTITION
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                return rs.getLong(1);
+            }
+        }
+    }
+
+    /** Einfache menschenlesbare Formatierung (z. B. "12.3 MB"). */
+    public static String humanReadableBytes(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        final String[] units = {"KB","MB","GB","TB","PB","EB"};
+        double v = bytes;
+        int i = -1;
+        while (v >= 1024 && i+1 < units.length) { v /= 1024.0; i++; }
+        return String.format(java.util.Locale.ROOT, "%.1f %s", v, units[i]);
+    }
 
 }

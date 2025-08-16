@@ -10,7 +10,7 @@ public class MainApp extends Application {
     public void start(Stage stage) throws Exception {
         FXMLLoader fxml = new FXMLLoader(getClass().getResource("main.fxml"));
         Scene scene = new Scene(fxml.load(), 1800, 800);
-        stage.setTitle("Oracle Migrator");
+        stage.setTitle("Table Copy Tool");
         stage.setScene(scene);
         stage.show();
     }

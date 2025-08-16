@@ -26,25 +26,28 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 public class MainController {
+    // Linke Seite
     @FXML private ListView<String> availableTablesList;
     @FXML private Button addButton, removeButton, addAllButton, removeAllButton;
     @FXML private Button configButton, loadTablesButton, startButton;
     @FXML private TextField batchSizeField;
 
+    // Tabelle
     @FXML private TableView<TableItem> overviewTable;
     @FXML private TableColumn<TableItem, String> colTable, colSrcCount, colDstCount, colStatus;
     @FXML private TableColumn<TableItem, Number> colTransferred, colRate;
     @FXML private TableColumn<TableItem, Double> colProgress;
-    @FXML private TableColumn<TableItem, Void> colMigrate, colStop, colShowWhere, colDeleteDst, colCreateDst;
+    @FXML private TableColumn<TableItem, String> colSize;        // NEU: Größe
+    @FXML private TableColumn<TableItem, Void> colAction;        // NEU: eine Spalte für alle Aktionen
 
+    // Datenmodelle
     private final ObservableList<String> availableTables = FXCollections.observableArrayList();
     private final ObservableList<TableItem> tableModels = FXCollections.observableArrayList();
 
-    //private final ExecutorService executor = Executors.newCachedThreadPool();
-
+    // Threadpool: max. 5 parallel
     private final ExecutorService executor = Executors.newFixedThreadPool(5, r -> {
         Thread t = new Thread(r, "count-pool");
-        t.setDaemon(true); // bei JavaFX oft sinnvoll
+        t.setDaemon(true);
         return t;
     });
 
@@ -55,12 +58,16 @@ public class MainController {
     public void initialize() {
         try { ConfigStore.loadInto(sourceCfg, targetCfg); } catch (IOException e) { e.printStackTrace(); }
 
+        // Listen/Selektion
         availableTablesList.setItems(availableTables);
         availableTablesList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
+        // Buttons aktivieren/deaktivieren
         addButton.disableProperty().bind(Bindings.isEmpty(availableTablesList.getSelectionModel().getSelectedItems()));
         removeButton.disableProperty().bind(Bindings.isEmpty(overviewTable.getSelectionModel().getSelectedItems()));
+        addAllButton.disableProperty().bind(Bindings.isEmpty(availableTables)); // Add All nur, wenn etwas geladen ist
 
+        // Spalten-Bindings
         colTable.setCellValueFactory(c -> c.getValue().tableNameProperty());
         colSrcCount.setCellValueFactory(c -> c.getValue().srcCountProperty());
         colDstCount.setCellValueFactory(c -> c.getValue().dstCountProperty());
@@ -68,7 +75,9 @@ public class MainController {
         colRate.setCellValueFactory(c -> c.getValue().rateProperty());
         colProgress.setCellValueFactory(c -> c.getValue().progressProperty().asObject());
         colStatus.setCellValueFactory(c -> c.getValue().statusProperty());
+        colSize.setCellValueFactory(c -> c.getValue().sizeProperty()); // NEU
 
+        // Progress als ProgressBar rendern
         colProgress.setCellFactory(tc -> new TableCell<>() {
             private final ProgressBar bar = new ProgressBar(0);
             { setContentDisplay(ContentDisplay.GRAPHIC_ONLY); bar.setMaxWidth(Double.MAX_VALUE); }
@@ -84,80 +93,81 @@ public class MainController {
 
         overviewTable.setItems(tableModels);
 
+        // Button-Handler
         configButton.setOnAction(this::openConfig);
         loadTablesButton.setOnAction(this::loadTables);
         startButton.setOnAction(this::startOverview);
-
         addButton.setOnAction(e -> addSelectedToOverview());
         addAllButton.setOnAction(e -> addAllToOverview());
         removeButton.setOnAction(e -> removeSelectedFromOverview());
         removeAllButton.setOnAction(e -> clearOverview());
 
-        addActionButtons();
-        addShowWhereButton();
-        addDeleteTargetButton();
-        addCreateTargetButton();
+        // Spalte mit den Aktionen
+        setupActionColumn();
+
+        // Kontextmenü für WHERE
         addWhereContextMenuOnOverview();
     }
 
-    private void addActionButtons() {
-        colMigrate.setCellFactory(col -> new TableCell<>() {
-            private final Button btn = new Button("migrate");
+    /** Eine Aktionsspalte mit mehreren Buttons (Copy/Stop/Show/Delete/Create). */
+    private void setupActionColumn() {
+        colAction.setSortable(false);
+        colAction.setReorderable(false);
+        colAction.setCellFactory(col -> new TableCell<>() {
+            private final Button btnMigrate   = new Button("Copy");
+            private final Button btnStop      = new Button("Stop");
+            private final Button btnShowWhere = new Button("Show Condition");
+            private final Button btnDeleteDst = new Button("Delete");
+            private final Button btnCreateDst = new Button("Create Table");
 
-            { btn.setOnAction(e -> startMigration(getTableView().getItems().get(getIndex()))); }
+            private final HBox box = new HBox(6, btnMigrate, btnStop, btnShowWhere, btnDeleteDst, btnCreateDst);
 
-            @Override protected void updateItem(Void v, boolean empty) { super.updateItem(v, empty); setGraphic(empty?null:btn); }
-        });
+            {
+                btnMigrate.setOnAction(e -> { TableItem item = getSafeRowItem(); if (item != null) startMigration(item); });
+                btnStop.setOnAction(e -> {
+                    TableItem item = getSafeRowItem();
+                    if (item != null) {
+                        item.setStatus("stopping");
+                        if (item.getStopSignal()!=null) item.getStopSignal().stop();
+                    }
+                });
+                btnShowWhere.setOnAction(e -> { TableItem item = getSafeRowItem(); if (item != null) onShowWhere(item); });
+                btnDeleteDst.setOnAction(e -> { TableItem item = getSafeRowItem(); if (item != null) onDeleteTarget(item); });
+                btnCreateDst.setOnAction(e -> { TableItem item = getSafeRowItem(); if (item != null) onCreateTarget(item); });
+            }
 
-        colStop.setCellFactory(col -> new TableCell<>() {
-            private final Button btn = new Button("stop");
-            { btn.setOnAction(e -> {
-                TableItem item = getTableView().getItems().get(getIndex());
-                item.setStatus("stopping");
-                if (item.getStopSignal()!=null) item.getStopSignal().stop();
-            });}
-            @Override protected void updateItem(Void v, boolean empty) { super.updateItem(v, empty); setGraphic(empty?null:btn); }
-        });
-    }
+            private TableItem getSafeRowItem() {
+                int idx = getIndex();
+                if (idx < 0 || idx >= getTableView().getItems().size()) return null;
+                return getTableView().getItems().get(idx);
+            }
 
-    private void addShowWhereButton() {
-        colShowWhere.setCellFactory(col -> new TableCell<>() {
-            private final Button btn = new Button("anzeigen");
-            @Override protected void updateItem(Void v, boolean empty) {
+            @Override
+            protected void updateItem(Void v, boolean empty) {
                 super.updateItem(v, empty);
                 if (empty) { setGraphic(null); return; }
-                TableItem item = getTableView().getItems().get(getIndex());
-                boolean exists = WhereStore.hasWhere(sourceCfg.getSchema(), item.getTableName());
-                btn.setDisable(!exists);
-                btn.setOnAction(e -> {
-                    String table = item.getTableName();
-                    String current = WhereStore.loadWhere(sourceCfg.getSchema(), table);
-                    Alert a = new Alert(Alert.AlertType.INFORMATION);
-                    a.setTitle("WHERE");
-                    a.setHeaderText("Tabelle: " + table + " (Quelle: " + sourceCfg.getSchema() + ")");
-                    a.setContentText(current==null || current.isBlank()? "(keine WHERE-Bedingung hinterlegt)": current);
-                    a.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
-                    a.showAndWait();
-                });
-                setGraphic(btn);
+                TableItem item = getSafeRowItem();
+                if (item == null) { setGraphic(null); return; }
+                boolean whereExists = WhereStore.hasWhere(sourceCfg.getSchema(), item.getTableName());
+                btnShowWhere.setDisable(!whereExists);
+                setGraphic(box);
             }
         });
     }
-    private void addDeleteTargetButton() {
-        colDeleteDst.setCellFactory(col -> new TableCell<>() {
-            private final Button btn = new Button("Ziel löschen");
-            { btn.setOnAction(e -> onDeleteTarget(getTableView().getItems().get(getIndex()))); }
-            @Override protected void updateItem(Void v, boolean empty) { super.updateItem(v, empty); setGraphic(empty?null:btn); }
-        });
-    }
-    private void addCreateTargetButton() {
-        colCreateDst.setCellFactory(col -> new TableCell<>() {
-            private final Button btn = new Button("Ziel anlegen");
-            { btn.setOnAction(e -> onCreateTarget(getTableView().getItems().get(getIndex()))); }
-            @Override protected void updateItem(Void v, boolean empty) { super.updateItem(v, empty); setGraphic(empty?null:btn); }
-        });
+
+    /** WHERE-Anzeige (Informationsdialog). */
+    private void onShowWhere(TableItem item) {
+        String table = item.getTableName();
+        String current = WhereStore.loadWhere(sourceCfg.getSchema(), table);
+        Alert a = new Alert(Alert.AlertType.INFORMATION);
+        a.setTitle("WHERE");
+        a.setHeaderText("Tabelle: " + table + " (Quelle: " + sourceCfg.getSchema() + ")");
+        a.setContentText(current==null || current.isBlank()? "(keine WHERE-Bedingung hinterlegt)": current);
+        a.getDialogPane().setMinHeight(Region.USE_PREF_SIZE);
+        a.showAndWait();
     }
 
+    /** Kontextmenü pro Zeile: WHERE bearbeiten + Vorschlag. */
     private void addWhereContextMenuOnOverview() {
         overviewTable.setRowFactory(tv -> {
             TableRow<TableItem> row = new TableRow<>();
@@ -250,6 +260,8 @@ public class MainController {
         });
     }
 
+    // --- Buttons links -------------------------------------------------------
+
     private void openConfig(ActionEvent e) {
         try {
             FXMLLoader loader = new FXMLLoader(getClass().getResource("config.fxml"));
@@ -263,7 +275,6 @@ public class MainController {
             dialog.setTitle("Verbindungsdaten");
             dialog.setScene(new Scene(pane));
             dialog.showAndWait();
-
         } catch (Exception ex) {
             showError("Konfiguration konnte nicht geöffnet werden", ex);
         }
@@ -286,11 +297,21 @@ public class MainController {
         runCountsForItems(tableModels);
     }
 
+    // --- Aktionen in der Tabelle --------------------------------------------
+
     private void startMigration(TableItem item) {
+        item.getStopSignal().reset();
         int batch = 1000;
-        try { if (batchSizeField.getText()!=null && !batchSizeField.getText().isBlank()) batch = Integer.parseInt(batchSizeField.getText().trim()); } catch (NumberFormatException ex) { batch = 1000; }
+        try {
+            if (batchSizeField.getText()!=null && !batchSizeField.getText().isBlank())
+                batch = Integer.parseInt(batchSizeField.getText().trim());
+        } catch (NumberFormatException ex) { batch = 1000; }
+
         MigrationTask task = new MigrationTask(sourceCfg, targetCfg, item.getTableName(), item, batch);
-        task.setOnFailed(ev -> { Throwable ex = task.getException(); item.setStatus("error: " + (ex!=null?ex.getMessage():"unknown")); });
+        task.setOnFailed(ev -> {
+            Throwable ex = task.getException();
+            item.setStatus("error: " + (ex!=null?ex.getMessage():"unknown"));
+        });
         executor.submit(task);
     }
 
@@ -301,12 +322,13 @@ public class MainController {
                 try (Connection src = DBManager.open(sourceCfg); Connection dst = DBManager.open(targetCfg)) {
                     boolean exists = DBManager.tableExists(dst, targetCfg.getSchema(), table);
                     if (!exists) {
-                        // Minimal DDL-Erzeugung (Spalten); für volle PK/Idx/FK könnte hier erweitert werden
                         DBManager.createTableLikeSource(src, sourceCfg.getSchema(), dst, targetCfg.getSchema(), table);
                         Platform.runLater(() -> item.setStatus("target created"));
                     } else Platform.runLater(() -> item.setStatus("target exists"));
                     Platform.runLater(() -> runCountsForItems(List.of(item)));
-                } catch (Exception ex) { Platform.runLater(() -> item.setStatus("create failed: " + ex.getMessage())); }
+                } catch (Exception ex) {
+                    Platform.runLater(() -> item.setStatus("create failed: " + ex.getMessage()));
+                }
                 return null;
             }
         };
@@ -318,6 +340,8 @@ public class MainController {
         final String table = item.getTableName();
         final String where = WhereStore.loadWhere(sourceCfg.getSchema(), table);
 
+        item.getStopSignal().reset();
+
         final long toDelete;
         try (Connection dst = DBManager.open(targetCfg)) {
             toDelete = DBManager.countRows(dst, targetCfg.getSchema(), table, where);
@@ -326,7 +350,11 @@ public class MainController {
         if (toDelete == 0) { showAlert(Alert.AlertType.INFORMATION, "Keine Zeilen zu löschen", "0 Zeilen (WHERE)"); return; }
 
         int batchSize = 1000;
-        try { if (batchSizeField.getText()!=null && !batchSizeField.getText().isBlank()) batchSize = Integer.parseInt(batchSizeField.getText().trim()); } catch (NumberFormatException ignore) {}
+        try {
+            if (batchSizeField.getText()!=null && !batchSizeField.getText().isBlank())
+                batchSize = Integer.parseInt(batchSizeField.getText().trim());
+        } catch (NumberFormatException ignore) {}
+
         item.setDeleting(true); item.setStatus("deleting …"); item.setTransferred(0); item.setProgress(0);
 
         final TableItem itemRef = item;
@@ -368,8 +396,15 @@ public class MainController {
         executor.submit(delTask);
     }
 
+    // --- Add/Remove der Übersicht -------------------------------------------
+
     private void addSelectedToOverview() {
         var sel = new ArrayList<>(availableTablesList.getSelectionModel().getSelectedItems());
+        if (sel.isEmpty()) {
+            showAlert(Alert.AlertType.INFORMATION, "Keine Auswahl", "Bitte zuerst eine oder mehrere Tabellen links auswählen.");
+            return;
+        }
+        int before = tableModels.size();
         List<TableItem> newly = new ArrayList<>();
         for (String t : sel) {
             if (tableModels.stream().noneMatch(m -> m.getTableName().equalsIgnoreCase(t))) {
@@ -379,9 +414,21 @@ public class MainController {
             }
         }
         overviewTable.refresh();
+        int added = tableModels.size() - before;
+        if (added == 0) {
+            showAlert(Alert.AlertType.INFORMATION, "Schon vorhanden", "Alle ausgewählten Tabellen sind bereits in der Übersicht.");
+            return;
+        }
+        overviewTable.scrollTo(tableModels.size() - 1);
         if (!newly.isEmpty()) runCountsForItems(newly);
     }
+
     private void addAllToOverview() {
+        if (availableTables.isEmpty()) {
+            showAlert(Alert.AlertType.INFORMATION, "Keine Tabellen geladen", "Bitte zuerst auf \"Tabellen laden\" klicken.");
+            return;
+        }
+        int before = tableModels.size();
         List<TableItem> newly = new ArrayList<>();
         for (String t : availableTables) {
             if (tableModels.stream().noneMatch(m -> m.getTableName().equalsIgnoreCase(t))) {
@@ -391,41 +438,75 @@ public class MainController {
             }
         }
         overviewTable.refresh();
+        int added = tableModels.size() - before;
+        if (added == 0) {
+            showAlert(Alert.AlertType.INFORMATION, "Schon vollständig", "Alle geladenen Tabellen sind bereits in der Übersicht.");
+            return;
+        }
+        overviewTable.scrollTo(tableModels.size() - 1);
         if (!newly.isEmpty()) runCountsForItems(newly);
     }
+
     private void removeSelectedFromOverview() {
         var selItems = new ArrayList<>(overviewTable.getSelectionModel().getSelectedItems());
         tableModels.removeAll(selItems);
         overviewTable.refresh();
     }
-    private void clearOverview() { tableModels.clear(); overviewTable.refresh(); }
+
+    private void clearOverview() {
+        tableModels.clear();
+        overviewTable.refresh();
+    }
+
+    // --- Zähl-/Größen-Tasks --------------------------------------------------
 
     private void runCountsForItems(Collection<TableItem> items) {
         for (TableItem it : items) {
             if (it == null || it.getTableName() == null) continue;
             final TableItem item = it; final String tbl = it.getTableName();
             Task<Void> t = new Task<>() {
-                @Override protected Void call() throws Exception {
+                @Override protected Void call() {
+                    // Quelle zählen
                     try (Connection src = DBManager.open(sourceCfg)) {
                         final String where = WhereStore.loadWhere(sourceCfg.getSchema(), tbl);
                         final long c = DBManager.countRows(src, sourceCfg.getSchema(), tbl, where);
                         Platform.runLater(() -> item.setSrcCount(Long.toString(c)));
-                    } catch (Exception ex) { Platform.runLater(() -> item.setSrcCount("error")); }
+                    } catch (Exception ex) {
+                        Platform.runLater(() -> item.setSrcCount("error"));
+                    }
+                    // Ziel zählen + Größe ermitteln
                     try (Connection dst = DBManager.open(targetCfg)) {
                         final String where2 = WhereStore.loadWhere(sourceCfg.getSchema(), tbl);
                         final boolean exists = DBManager.tableExists(dst, targetCfg.getSchema(), tbl);
-                        if (!exists) Platform.runLater(() -> item.setDstCount("missing"));
-                        else {
-                            final long c2 = DBManager.countRows(dst, targetCfg.getSchema(), tbl, where2);
+                        if (!exists) {
+                            Platform.runLater(() -> {
+                                item.setDstCount("missing");
+                                item.setSize("n/a");
+                            });
+                        } else {
+                            final long c2 = DBManager.countRows(dst, sourceCfg.getSchema(), tbl, where2);
                             Platform.runLater(() -> item.setDstCount(Long.toString(c2)));
+                            try {
+                                long bytes = DBManager.getTableSizeBytes(dst, tbl);
+                                String nice = DBManager.humanReadableBytes(bytes);
+                                Platform.runLater(() -> item.setSize(nice));
+                            } catch (Exception ex) {
+                                Platform.runLater(() -> item.setSize("n/a")); // statt "error"
+                                System.out.println("Fehler: " + ex.getMessage());
+                            }
                         }
-                    } catch (Exception ex) { Platform.runLater(() -> item.setDstCount("error")); }
+                    } catch (Exception ex) {
+                        Platform.runLater(() -> item.setDstCount("error"));
+                        System.out.println("Fehler: " + ex.getMessage());
+                    }
                     return null;
                 }
             };
             executor.submit(t);
         }
     }
+
+    // --- Dialog-Helfer -------------------------------------------------------
 
     private void showError(String header, Throwable ex) {
         ex.printStackTrace();
