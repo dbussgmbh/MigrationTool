@@ -372,13 +372,13 @@ public class DBManager {
                         "  UNION ALL\n" +
                         "  SELECT ul.index_name   FROM user_lobs ul JOIN t ON ul.table_name = t.table_name\n" +
                         ")\n" +
-                        "SELECT ROUND(SUM(us.bytes)/1024/1024, 2) AS total_size_mb\n" +
+                        "SELECT ROUND(SUM(us.bytes), 2) AS total_size_byte\n" +
                         "FROM   user_segments us\n" +
                         "WHERE  (us.segment_type = 'TABLE' AND us.segment_name = (SELECT table_name FROM t))\n" +
                         "   OR  us.segment_name IN (SELECT segment_name FROM idx)\n" +
                         "   OR  us.segment_name IN (SELECT segment_name FROM lob)";
 
-        System.out.println("Size SQL: " + sql);
+    //    System.out.println("Size SQL: " + sql);
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
 //            String tab = table.toUpperCase();

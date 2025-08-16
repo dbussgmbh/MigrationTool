@@ -471,6 +471,16 @@ public class MainController {
                         final String where = WhereStore.loadWhere(sourceCfg.getSchema(), tbl);
                         final long c = DBManager.countRows(src, sourceCfg.getSchema(), tbl, where);
                         Platform.runLater(() -> item.setSrcCount(Long.toString(c)));
+
+                        try {
+                            long bytes = DBManager.getTableSizeBytes(src, tbl);
+                            String nice = DBManager.humanReadableBytes(bytes);
+                            Platform.runLater(() -> item.setSize(nice));
+                        } catch (Exception ex) {
+                            Platform.runLater(() -> item.setSize("n/a")); // statt "error"
+                            System.out.println("Fehler: " + ex.getMessage());
+                        }
+
                     } catch (Exception ex) {
                         Platform.runLater(() -> item.setSrcCount("error"));
                     }
@@ -481,19 +491,12 @@ public class MainController {
                         if (!exists) {
                             Platform.runLater(() -> {
                                 item.setDstCount("missing");
-                                item.setSize("n/a");
+
                             });
                         } else {
-                            final long c2 = DBManager.countRows(dst, sourceCfg.getSchema(), tbl, where2);
+                            final long c2 = DBManager.countRows(dst, targetCfg.getSchema(), tbl, where2);
                             Platform.runLater(() -> item.setDstCount(Long.toString(c2)));
-                            try {
-                                long bytes = DBManager.getTableSizeBytes(dst, tbl);
-                                String nice = DBManager.humanReadableBytes(bytes);
-                                Platform.runLater(() -> item.setSize(nice));
-                            } catch (Exception ex) {
-                                Platform.runLater(() -> item.setSize("n/a")); // statt "error"
-                                System.out.println("Fehler: " + ex.getMessage());
-                            }
+
                         }
                     } catch (Exception ex) {
                         Platform.runLater(() -> item.setDstCount("error"));
