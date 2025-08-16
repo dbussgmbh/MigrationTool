@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<BorderPane xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml" fx:controller="com.example.migrator.MainController">
+    <left>
+        <VBox spacing="8" prefWidth="280" style="-fx-padding: 10;">
+            <children>
+                <Button text="Konfiguration" fx:id="configButton"/>
+                <Button text="Tabellen laden" fx:id="loadTablesButton"/>
+                <Label text="Verfügbare Tabellen"/>
+                <ListView fx:id="availableTablesList" prefHeight="300"/>
+                <HBox spacing="6">
+                    <children>
+                        <Button text="Add" fx:id="addButton"/>
+                        <Button text="Add All" fx:id="addAllButton"/>
+                    </children>
+                </HBox>
+                <HBox spacing="6">
+                    <children>
+                        <Button text="Remove" fx:id="removeButton"/>
+                        <Button text="Remove All" fx:id="removeAllButton"/>
+                    </children>
+                </HBox>
+                <HBox spacing="6">
+                    <children>
+                        <Label text="Batch Size:"/>
+                        <TextField fx:id="batchSizeField" promptText="1000"/>
+                    </children>
+                </HBox>
+                <Button text="Start Counts" fx:id="startButton"/>
+            </children>
+        </VBox>
+    </left>
+    <center>
+        <VBox spacing="8" style="-fx-padding: 10;">
+            <children>
+                <TableView fx:id="overviewTable" prefHeight="600">
+                    <columns>
+                        <TableColumn fx:id="colTable" text="Tabelle" prefWidth="160"/>
+                        <TableColumn fx:id="colSrcCount" text="Quelle" prefWidth="90"/>
+                        <TableColumn fx:id="colDstCount" text="Ziel" prefWidth="90"/>
+                        <TableColumn fx:id="colTransferred" text="Übertragen" prefWidth="100"/>
+                        <TableColumn fx:id="colRate" text="Rate (rows/s)" prefWidth="110"/>
+                        <TableColumn fx:id="colProgress" text="Progress" prefWidth="140"/>
+                        <TableColumn fx:id="colStatus" text="Status" prefWidth="200"/>
+                        <TableColumn fx:id="colMigrate" text="Migrieren" prefWidth="90"/>
+                        <TableColumn fx:id="colStop" text="Stop" prefWidth="70"/>
+                        <TableColumn fx:id="colShowWhere" text="WHERE" prefWidth="80"/>
+                        <TableColumn fx:id="colDeleteDst" text="Ziel löschen" prefWidth="110"/>
+                        <TableColumn fx:id="colCreateDst" text="Ziel anlegen" prefWidth="110"/>
+                    </columns>
+                </TableView>
+            </children>
+        </VBox>
+    </center>
+</BorderPane>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.control.*?>
+<VBox xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml" fx:controller="com.example.migrator.ConfigController" spacing="8" style="-fx-padding: 12;">
+    <children>
+        <TitledPane text="Quelle (Source)" expanded="true">
+            <content>
+                <GridPane hgap="8" vgap="8" style="-fx-padding: 8;">
+                    <columnConstraints>
+                        <ColumnConstraints percentWidth="30"/>
+                        <ColumnConstraints percentWidth="70"/>
+                    </columnConstraints>
+                    <children>
+                        <Label text="URL"/>      <TextField fx:id="srcUrlField" GridPane.columnIndex="1"/>
+                        <Label text="User" GridPane.rowIndex="1"/> <TextField fx:id="srcUserField" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                        <Label text="Passwort" GridPane.rowIndex="2"/> <PasswordField fx:id="srcPassField" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+                        <Label text="Schema" GridPane.rowIndex="3"/> <TextField fx:id="srcSchemaField" GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+                    </children>
+                </GridPane>
+            </content>
+        </TitledPane>
+        <TitledPane text="Ziel (Target)" expanded="true">
+            <content>
+                <GridPane hgap="8" vgap="8" style="-fx-padding: 8;">
+                    <columnConstraints>
+                        <ColumnConstraints percentWidth="30"/>
+                        <ColumnConstraints percentWidth="70"/>
+                    </columnConstraints>
+                    <children>
+                        <Label text="URL"/>      <TextField fx:id="dstUrlField" GridPane.columnIndex="1"/>
+                        <Label text="User" GridPane.rowIndex="1"/> <TextField fx:id="dstUserField" GridPane.columnIndex="1" GridPane.rowIndex="1"/>
+                        <Label text="Passwort" GridPane.rowIndex="2"/> <PasswordField fx:id="dstPassField" GridPane.columnIndex="1" GridPane.rowIndex="2"/>
+                        <Label text="Schema" GridPane.rowIndex="3"/> <TextField fx:id="dstSchemaField" GridPane.columnIndex="1" GridPane.rowIndex="3"/>
+                    </children>
+                </GridPane>
+            </content>
+        </TitledPane>
+        <HBox spacing="8">
+            <children>
+                <Button text="Speichern" onAction="#onSave"/>
+                <Button text="Abbrechen" onAction="#onCancel"/>
+            </children>
+        </HBox>
+    </children>
+</VBox>
