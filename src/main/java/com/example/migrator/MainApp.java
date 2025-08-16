@@ -9,7 +9,7 @@ public class MainApp extends Application {
     @Override
     public void start(Stage stage) throws Exception {
         FXMLLoader fxml = new FXMLLoader(getClass().getResource("main.fxml"));
-        Scene scene = new Scene(fxml.load(), 1200, 720);
+        Scene scene = new Scene(fxml.load(), 1800, 800);
         stage.setTitle("Oracle Migrator");
         stage.setScene(scene);
         stage.show();

@@ -349,7 +349,7 @@ public class MainController {
                             itemRef.setStatus("deleting " + deletedSoFar + "/" + toDeleteRef + " (batch " + commitBatchRef + ")");
                         });
                     };
-                    final int affected = DBManager.deleteRowsInBatches(dst, targetCfg.getSchema(), table, whereRef, commitBatchRef, listener);
+                    final int affected = DBManager.deleteRowsInBatches(dst, targetCfg.getSchema(), table, whereRef, commitBatchRef, listener, item.getStopSignal());
                     long remaining; try { remaining = DBManager.countRows(dst, targetCfg.getSchema(), table, whereRef); } catch (Exception ex) { remaining = -1; }
                     final long remainingRef = remaining;
                     Platform.runLater(() -> {

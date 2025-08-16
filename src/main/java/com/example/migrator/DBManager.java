@@ -91,7 +91,7 @@ public class DBManager {
     }
 
    // public static int deleteRowsInBatches(Connection conn, String schema, String table, String whereClause, int batchSize, DeleteListener listener) throws SQLException {
-   public static int deleteRowsInBatches(Connection conn, String schema, String table, String whereClause, int batchSize, DeleteListener listener) throws SQLException {
+   public static int deleteRowsInBatches(Connection conn, String schema, String table, String whereClause, int batchSize, DeleteListener listener, StopSignal stop) throws SQLException {
         final String base = schema + "." + table;
         final String sql = (whereClause != null && !whereClause.isBlank())
                 ? "DELETE FROM " + base + " WHERE (" + whereClause + ") AND ROWNUM <= ?"
@@ -101,6 +101,7 @@ public class DBManager {
         conn.setAutoCommit(false);
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             while (true) {
+                if (stop != null && stop.isStopped()) { conn.rollback(); throw new SQLException("stopped"); }
                 ps.setInt(1, batchSize);
                 int aff = ps.executeUpdate();
                 conn.commit();
