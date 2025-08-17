@@ -466,7 +466,7 @@ public class MainController {
             final TableItem item = it; final String tbl = it.getTableName();
             Task<Void> t = new Task<>() {
                 @Override protected Void call() {
-                    // Quelle zählen
+                    // Quelle zählen + Größe ermitteln
                     try (Connection src = DBManager.open(sourceCfg)) {
                         final String where = WhereStore.loadWhere(sourceCfg.getSchema(), tbl);
                         final long c = DBManager.countRows(src, sourceCfg.getSchema(), tbl, where);
@@ -484,7 +484,7 @@ public class MainController {
                     } catch (Exception ex) {
                         Platform.runLater(() -> item.setSrcCount("error"));
                     }
-                    // Ziel zählen + Größe ermitteln
+                    // Ziel zählen
                     try (Connection dst = DBManager.open(targetCfg)) {
                         final String where2 = WhereStore.loadWhere(sourceCfg.getSchema(), tbl);
                         final boolean exists = DBManager.tableExists(dst, targetCfg.getSchema(), tbl);
