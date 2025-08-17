@@ -47,11 +47,11 @@
                     <columns>
                         <TableColumn fx:id="colTable" prefWidth="160" text="Tabelle" />
                         <TableColumn fx:id="colSize" prefWidth="110" text="Größe"/>
-                        <TableColumn fx:id="colSrcCount" prefWidth="90" text="Quelle" />
-                        <TableColumn fx:id="colDstCount" prefWidth="90" text="Ziel" />
+                        <TableColumn fx:id="colSrcCount" prefWidth="90" text="CNT Quelle" />
+                        <TableColumn fx:id="colDstCount" prefWidth="90" text="CNT Ziel" />
                         <TableColumn fx:id="colTransferred" prefWidth="100" text="Übertragen" />
                         <TableColumn fx:id="colRate" prefWidth="110" text="Rate (rows/s)" />
-                        <TableColumn fx:id="colProgress" prefWidth="140" text="Progress" />
+                        <TableColumn fx:id="colProgress" prefWidth="140" text="Fortschritt" />
                         <TableColumn fx:id="colStatus" prefWidth="200" text="Status" />
 
                         <TableColumn fx:id="colAction" prefWidth="360" text="Aktion" sortable="false" reorderable="false"/>

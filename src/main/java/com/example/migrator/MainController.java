@@ -37,7 +37,8 @@ public class MainController {
     @FXML private TableColumn<TableItem, String> colTable, colSrcCount, colDstCount, colStatus;
     @FXML private TableColumn<TableItem, Number> colTransferred, colRate;
     @FXML private TableColumn<TableItem, Double> colProgress;
-    @FXML private TableColumn<TableItem, String> colSize;        // NEU: Größe
+    //@FXML private TableColumn<TableItem, String> colSize;        // NEU: Größe
+    @FXML private TableColumn<TableItem, Number> colSize;
     @FXML private TableColumn<TableItem, Void> colAction;        // NEU: eine Spalte für alle Aktionen
 
     // Datenmodelle
@@ -75,7 +76,8 @@ public class MainController {
         colRate.setCellValueFactory(c -> c.getValue().rateProperty());
         colProgress.setCellValueFactory(c -> c.getValue().progressProperty().asObject());
         colStatus.setCellValueFactory(c -> c.getValue().statusProperty());
-        colSize.setCellValueFactory(c -> c.getValue().sizeProperty()); // NEU
+        //colSize.setCellValueFactory(c -> c.getValue().sizeProperty()); // NEU
+        colSize.setCellValueFactory(c -> c.getValue().sizeMBProperty());
 
         // Progress als ProgressBar rendern
         colProgress.setCellFactory(tc -> new TableCell<>() {
@@ -88,6 +90,18 @@ public class MainController {
                 bar.setProgress(v==null?0:v);
                 bar.setStyle(item!=null && item.isDeleting()? "-fx-accent: #e53935;" : "");
                 setGraphic(bar);
+            }
+        });
+
+        colSize.setCellFactory(tc -> new TableCell<>() {
+            @Override
+            protected void updateItem(Number v, boolean empty) {
+                super.updateItem(v, empty);
+                if (empty || v == null) {
+                    setText(null);
+                } else {
+                    setText(String.format("%.2f MB", v.doubleValue()));
+                }
             }
         });
 
@@ -486,7 +500,14 @@ public class MainController {
 
                         Platform.runLater(() -> {
                             item.setSrcCount(Long.toString(cs.rowCount));
-                            item.setSize(DBManager.humanReadableBytes(cs.totalBytes));
+                            //item.setSize(DBManager.humanReadableBytes(cs.totalBytes));
+
+                            System.out.println("Tabelle: " + item.getTableName());
+                            System.out.println("Size in Bytes: " + cs.totalBytes);
+                            double mb = cs.totalBytes / (1024.0 * 1024.0);
+                            item.setSizeMB(mb);
+
+
                         });
 
 
@@ -503,7 +524,7 @@ public class MainController {
                         final boolean exists = DBManager.tableExists(dst, targetCfg.getSchema(), tbl);
                         if (!exists) {
                             Platform.runLater(() -> {
-                                item.setDstCount("missing");
+                                item.setDstCount("table not exists");
 
                             });
                         } else {

@@ -17,6 +17,7 @@ public class TableItem {
     private final BooleanProperty deleting = new SimpleBooleanProperty(false);
 
     private final StringProperty  size        = new SimpleStringProperty("n/a");
+    private final DoubleProperty sizeMB = new SimpleDoubleProperty();
 
     public TableItem(String table) { this.tableName.set(table); }
     public TableItem(String table, String srcCount, String dstCount) {
@@ -63,5 +64,9 @@ public class TableItem {
     public String getSize() { return size.get(); }
     public void setSize(String v) { size.set(v); }
     public StringProperty sizeProperty() { return size; }
+
+    public DoubleProperty sizeMBProperty() { return sizeMB; }
+    public double getSizeMB() { return sizeMB.get(); }
+    public void setSizeMB(double v) { sizeMB.set(v); }
 
 }

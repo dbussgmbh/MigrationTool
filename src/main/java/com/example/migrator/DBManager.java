@@ -81,6 +81,8 @@ public class DBManager {
                         "  ) AS total_size_bytes " +
                         "FROM dual";
 
+       // System.out.println("SQL: " + sql);
+
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, table); // für UPPER(?) in CTE t
             try (ResultSet rs = ps.executeQuery()) {
@@ -441,12 +443,20 @@ public class DBManager {
 
     /** Einfache menschenlesbare Formatierung (z. B. "12.3 MB"). */
     public static String humanReadableBytes(long bytes) {
+
+
+        double mb = bytes / 1024.0 / 1024.0;  // Bytes → MB
+        return String.format(java.util.Locale.ROOT, "%.1f MB", mb);
+        /*
+        bytes / 1024
         if (bytes < 1024) return bytes + " B";
         final String[] units = {"KB","MB","GB","TB","PB","EB"};
         double v = bytes;
         int i = -1;
         while (v >= 1024 && i+1 < units.length) { v /= 1024.0; i++; }
         return String.format(java.util.Locale.ROOT, "%.1f %s", v, units[i]);
+        */
+
     }
 
 }
