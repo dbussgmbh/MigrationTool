@@ -11,6 +11,7 @@ import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.input.ContextMenuEvent;
+import javafx.scene.input.MouseButton;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
@@ -66,6 +67,23 @@ public class MainController {
         // Listen/Selektion
         availableTablesList.setItems(availableTables);
         availableTablesList.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+
+        availableTablesList.setCellFactory(lv -> {
+            ListCell<String> cell = new ListCell<>() {
+                @Override protected void updateItem(String item, boolean empty) {
+                    super.updateItem(item, empty);
+                    setText(empty ? null : item);
+                }
+            };
+            cell.setOnMouseClicked(e -> {
+                if (!cell.isEmpty() && e.getButton() == MouseButton.PRIMARY && e.getClickCount() == 2) {
+                    availableTablesList.getSelectionModel().select(cell.getItem());
+                    addSelectedToOverview();
+                }
+            });
+            return cell;
+        });
+
 
         // Buttons aktivieren/deaktivieren
         addButton.disableProperty().bind(Bindings.isEmpty(availableTablesList.getSelectionModel().getSelectedItems()));
