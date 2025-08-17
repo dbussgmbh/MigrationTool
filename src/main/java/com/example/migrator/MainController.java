@@ -13,6 +13,7 @@ import javafx.scene.control.*;
 import javafx.scene.input.ContextMenuEvent;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
@@ -31,6 +32,9 @@ public class MainController {
     @FXML private Button addButton, removeButton, addAllButton, removeAllButton;
     @FXML private Button configButton, loadTablesButton, startButton;
     @FXML private TextField batchSizeField;
+
+    @FXML private StackPane tablesContainer;
+    @FXML private ProgressIndicator loadingIndicatorTables;
 
     // Tabelle
     @FXML private TableView<TableItem> overviewTable;
@@ -121,6 +125,15 @@ public class MainController {
 
         // Kontextmenü für WHERE
         addWhereContextMenuOnOverview();
+
+        loadTables(null);
+
+// Placeholder, solange keine Items vorhanden sind
+        availableTablesList.setPlaceholder(new Label("Keine Daten geladen"));
+// StackPane soll Klicks durchlassen, wenn der Spinner unsichtbar ist
+        tablesContainer.setPickOnBounds(false);
+
+
     }
 
     /** Eine Aktionsspalte mit mehreren Buttons (Copy/Stop/Show/Delete/Create). */
@@ -288,6 +301,10 @@ public class MainController {
             dialog.initModality(Modality.APPLICATION_MODAL);
             dialog.setTitle("Verbindungsdaten");
             dialog.setScene(new Scene(pane));
+
+            dialog.setWidth(600);
+            dialog.setHeight(500);
+
             dialog.showAndWait();
         } catch (Exception ex) {
             showError("Konfiguration konnte nicht geöffnet werden", ex);
@@ -298,12 +315,57 @@ public class MainController {
         Task<List<String>> task = new Task<>() {
             @Override protected List<String> call() throws Exception {
                 try (Connection src = DBManager.open(sourceCfg)) {
+                  //  Thread.sleep(800);
                     return DBManager.listTables(src, sourceCfg.getSchema());
                 }
             }
         };
-        task.setOnSucceeded(ev -> availableTables.setAll(task.getValue()));
-        task.setOnFailed(ev -> showError("Tabellen laden fehlgeschlagen", task.getException()));
+        // --- UI-Bindings (Overlay-Spinner + Liste sperren) ---
+
+        loadingIndicatorTables.setMouseTransparent(true);
+        loadingIndicatorTables.toFront();
+        tablesContainer.setPickOnBounds(false);
+
+        // Vorherige Bindings lösen (falls loadTables mehrfach gestartet wird)
+        if (loadingIndicatorTables.visibleProperty().isBound())
+            loadingIndicatorTables.visibleProperty().unbind();
+        if (loadingIndicatorTables.managedProperty().isBound())
+            loadingIndicatorTables.managedProperty().unbind();
+        if (availableTablesList.disableProperty().isBound())
+            availableTablesList.disableProperty().unbind();
+
+        // Neu binden: Spinner an Task-Status, managed an visible koppeln, Liste sperren
+        loadingIndicatorTables.visibleProperty().bind(task.runningProperty());
+        loadingIndicatorTables.managedProperty().bind(loadingIndicatorTables.visibleProperty());
+        availableTablesList.disableProperty().bind(task.runningProperty());
+
+
+
+        task.setOnSucceeded(ev -> {
+            availableTables.setAll(task.getValue());
+            if (availableTables.isEmpty()) {
+                availableTablesList.setPlaceholder(new Label("Keine Tabellen gefunden"));
+            }
+            // Bindings lösen (wichtig, wenn du mehrmals lädst)
+            loadingIndicatorTables.visibleProperty().unbind();
+            loadingIndicatorTables.managedProperty().unbind();
+            availableTablesList.disableProperty().unbind();
+            loadingIndicatorTables.setVisible(false);
+            loadingIndicatorTables.setManaged(false);
+            availableTablesList.setDisable(false);
+        });
+
+        task.setOnFailed(ev -> {
+            showError("Tabellen laden fehlgeschlagen", task.getException());
+            // Bindings lösen
+            loadingIndicatorTables.visibleProperty().unbind();
+            loadingIndicatorTables.managedProperty().unbind();
+            availableTablesList.disableProperty().unbind();
+            loadingIndicatorTables.setVisible(false);
+            loadingIndicatorTables.setManaged(false);
+            availableTablesList.setDisable(false);
+        });
+
         executor.submit(task);
     }
 
@@ -502,8 +564,8 @@ public class MainController {
                             item.setSrcCount(Long.toString(cs.rowCount));
                             //item.setSize(DBManager.humanReadableBytes(cs.totalBytes));
 
-                            System.out.println("Tabelle: " + item.getTableName());
-                            System.out.println("Size in Bytes: " + cs.totalBytes);
+                          //  System.out.println("Tabelle: " + item.getTableName());
+                          //  System.out.println("Size in Bytes: " + cs.totalBytes);
                             double mb = cs.totalBytes / (1024.0 * 1024.0);
                             item.setSizeMB(mb);
 

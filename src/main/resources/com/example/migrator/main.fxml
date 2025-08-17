@@ -10,6 +10,8 @@
 <?import javafx.scene.layout.HBox?>
 <?import javafx.scene.layout.VBox?>
 
+<?import javafx.scene.layout.StackPane?>
+<?import javafx.scene.control.ProgressIndicator?>
 <BorderPane xmlns="http://javafx.com/javafx/23.0.1" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.example.migrator.MainController">
     <left>
         <VBox prefWidth="280" spacing="8" style="-fx-padding: 10;">
@@ -17,7 +19,19 @@
                 <Button fx:id="configButton" text="Konfiguration" />
                 <Button fx:id="loadTablesButton" text="Tabellen laden" />
                 <Label text="Verfügbare Tabellen" />
-                <ListView fx:id="availableTablesList" prefHeight="300" />
+
+
+                <!-- ListView + Overlay-Spinner -->
+                <StackPane fx:id="tablesContainer" pickOnBounds="false">
+                    <children>
+                        <ListView fx:id="availableTablesList" prefHeight="300"/>
+                        <ProgressIndicator fx:id="loadingIndicatorTables"
+                                           maxWidth="40" maxHeight="40"
+                                           visible="false" managed="false"/>
+                    </children>
+                </StackPane>
+
+
                 <HBox spacing="6">
                     <children>
                         <Button fx:id="addButton" text="Add" />
