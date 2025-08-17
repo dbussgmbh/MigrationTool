@@ -42,6 +42,57 @@ public class DBManager {
         }
     }
 
+
+    public static final class CountAndSize {
+        public final long rowCount;
+        public final long totalBytes;
+        public CountAndSize(long rowCount, long totalBytes) {
+            this.rowCount = rowCount;
+            this.totalBytes = totalBytes;
+        }
+    }
+
+
+    public static CountAndSize getCountAndSizeFromSource(Connection conn,
+                                                         String schema,
+                                                         String table,
+                                                         String whereClause) throws SQLException {
+        String fq = schema + "." + table; // Annahme: normale (uppercased) Identifiers
+        String whereSql = (whereClause != null && !whereClause.isBlank()) ? " WHERE " + whereClause : "";
+
+        // Eine Abfrage, zwei Skalar-Subqueries:
+        String sql =
+                "SELECT " +
+                        "  (SELECT COUNT(*) FROM " + fq + whereSql + ") AS row_count, " +
+                        "  ( " +
+                        "    WITH t AS (SELECT UPPER(?) AS table_name FROM dual), " +
+                        "         idx AS (SELECT ui.index_name AS segment_name " +
+                        "                 FROM user_indexes ui JOIN t ON ui.table_name = t.table_name), " +
+                        "         lob AS ( " +
+                        "           SELECT ul.segment_name FROM user_lobs ul JOIN t ON ul.table_name = t.table_name " +
+                        "           UNION ALL " +
+                        "           SELECT ul.index_name   FROM user_lobs ul JOIN t ON ul.table_name = t.table_name " +
+                        "         ) " +
+                        "    SELECT NVL(SUM(us.bytes),0) " +
+                        "    FROM   user_segments us " +
+                        "    WHERE  (us.segment_type = 'TABLE' AND us.segment_name = (SELECT table_name FROM t)) " +
+                        "       OR  us.segment_name IN (SELECT segment_name FROM idx) " +
+                        "       OR  us.segment_name IN (SELECT segment_name FROM lob) " +
+                        "  ) AS total_size_bytes " +
+                        "FROM dual";
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, table); // für UPPER(?) in CTE t
+            try (ResultSet rs = ps.executeQuery()) {
+                rs.next();
+                long cnt   = rs.getLong(1);
+                long bytes = rs.getLong(2);
+                return new CountAndSize(cnt, bytes);
+            }
+        }
+    }
+
+
     public static long countRows(Connection conn, String schema, String table, String whereClause) throws SQLException {
         String fq = schema + "." + table;
         String sql = "SELECT COUNT(*) FROM " + fq + (whereClause != null && !whereClause.isBlank() ? " WHERE " + whereClause : "");
@@ -381,14 +432,6 @@ public class DBManager {
     //    System.out.println("Size SQL: " + sql);
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
-//            String tab = table.toUpperCase();
-//            int i = 1;
-//            ps.setString(i++, tab); // TABLE/IOT
-//            ps.setString(i++, tab); // TABLE PARTITION
-//            ps.setString(i++, tab); // TABLE SUBPARTITION
-//            ps.setString(i++, tab); // LOBSEGMENT
-//            ps.setString(i++, tab); // LOB PARTITION
-//            ps.setString(i  , tab); // LOB SUBPARTITION
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rs.getLong(1);

@@ -469,20 +469,33 @@ public class MainController {
                     // Quelle zählen + Größe ermitteln
                     try (Connection src = DBManager.open(sourceCfg)) {
                         final String where = WhereStore.loadWhere(sourceCfg.getSchema(), tbl);
+
+
+
+                        /*
                         final long c = DBManager.countRows(src, sourceCfg.getSchema(), tbl, where);
                         Platform.runLater(() -> item.setSrcCount(Long.toString(c)));
 
-                        try {
-                            long bytes = DBManager.getTableSizeBytes(src, tbl);
-                            String nice = DBManager.humanReadableBytes(bytes);
-                            Platform.runLater(() -> item.setSize(nice));
-                        } catch (Exception ex) {
-                            Platform.runLater(() -> item.setSize("n/a")); // statt "error"
-                            System.out.println("Fehler: " + ex.getMessage());
-                        }
+                        long bytes = DBManager.getTableSizeBytes(src, tbl);
+                        String nice = DBManager.humanReadableBytes(bytes);
+                        Platform.runLater(() -> item.setSize(nice));
+                        */
+
+                        DBManager.CountAndSize cs =
+                                DBManager.getCountAndSizeFromSource(src, sourceCfg.getSchema(), tbl, where);
+
+                        Platform.runLater(() -> {
+                            item.setSrcCount(Long.toString(cs.rowCount));
+                            item.setSize(DBManager.humanReadableBytes(cs.totalBytes));
+                        });
+
+
 
                     } catch (Exception ex) {
                         Platform.runLater(() -> item.setSrcCount("error"));
+                        Platform.runLater(() -> item.setSize("n/a"));
+                        System.out.println("Fehler: " + ex.getMessage());
+
                     }
                     // Ziel zählen
                     try (Connection dst = DBManager.open(targetCfg)) {
