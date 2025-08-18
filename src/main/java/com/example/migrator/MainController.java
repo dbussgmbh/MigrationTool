@@ -3,6 +3,7 @@ package com.example.migrator;
 import javafx.application.Platform;
 import javafx.beans.binding.Bindings;
 import javafx.collections.FXCollections;
+import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.concurrent.Task;
 import javafx.event.ActionEvent;
@@ -42,9 +43,13 @@ public class MainController {
     @FXML private TableColumn<TableItem, String> colTable, colSrcCount, colDstCount, colStatus;
     @FXML private TableColumn<TableItem, Number> colTransferred, colRate;
     @FXML private TableColumn<TableItem, Double> colProgress;
-    //@FXML private TableColumn<TableItem, String> colSize;        // NEU: Größe
     @FXML private TableColumn<TableItem, Number> colSize;
-    @FXML private TableColumn<TableItem, Void> colAction;        // NEU: eine Spalte für alle Aktionen
+    @FXML private TableColumn<TableItem, Void> colAction;
+
+    // *** NEU: Summen-Label unter der Tabelle ***
+    // In deiner FXML unterhalb der TableView einfügen:
+    // <Label fx:id="sumLabel" text="Summe Größe: 0 MB" style="-fx-font-weight: bold;" />
+    @FXML private Label sumLabel;
 
     // Datenmodelle
     private final ObservableList<String> availableTables = FXCollections.observableArrayList();
@@ -84,7 +89,6 @@ public class MainController {
             return cell;
         });
 
-
         // Buttons aktivieren/deaktivieren
         addButton.disableProperty().bind(Bindings.isEmpty(availableTablesList.getSelectionModel().getSelectedItems()));
         removeButton.disableProperty().bind(Bindings.isEmpty(overviewTable.getSelectionModel().getSelectedItems()));
@@ -98,7 +102,6 @@ public class MainController {
         colRate.setCellValueFactory(c -> c.getValue().rateProperty());
         colProgress.setCellValueFactory(c -> c.getValue().progressProperty().asObject());
         colStatus.setCellValueFactory(c -> c.getValue().statusProperty());
-        //colSize.setCellValueFactory(c -> c.getValue().sizeProperty()); // NEU
         colSize.setCellValueFactory(c -> c.getValue().sizeMBProperty());
 
         // Progress als ProgressBar rendern
@@ -115,6 +118,7 @@ public class MainController {
             }
         });
 
+        // Größe formatieren
         colSize.setCellFactory(tc -> new TableCell<>() {
             @Override
             protected void updateItem(Number v, boolean empty) {
@@ -144,14 +148,16 @@ public class MainController {
         // Kontextmenü für WHERE
         addWhereContextMenuOnOverview();
 
+        // --- NEU: Summe automatisch aktualisieren ---
+        tableModels.addListener((ListChangeListener<TableItem>) c -> updateSumLabel());
+        updateSumLabel(); // initial
+
         loadTables(null);
 
-// Placeholder, solange keine Items vorhanden sind
+        // Placeholder, solange keine Items vorhanden sind
         availableTablesList.setPlaceholder(new Label("Keine Daten geladen"));
-// StackPane soll Klicks durchlassen, wenn der Spinner unsichtbar ist
+        // StackPane soll Klicks durchlassen, wenn der Spinner unsichtbar ist
         tablesContainer.setPickOnBounds(false);
-
-
     }
 
     /** Eine Aktionsspalte mit mehreren Buttons (Copy/Stop/Show/Delete/Create). */
@@ -333,7 +339,6 @@ public class MainController {
         Task<List<String>> task = new Task<>() {
             @Override protected List<String> call() throws Exception {
                 try (Connection src = DBManager.open(sourceCfg)) {
-                  //  Thread.sleep(800);
                     return DBManager.listTables(src, sourceCfg.getSchema());
                 }
             }
@@ -356,8 +361,6 @@ public class MainController {
         loadingIndicatorTables.visibleProperty().bind(task.runningProperty());
         loadingIndicatorTables.managedProperty().bind(loadingIndicatorTables.visibleProperty());
         availableTablesList.disableProperty().bind(task.runningProperty());
-
-
 
         task.setOnSucceeded(ev -> {
             availableTables.setAll(task.getValue());
@@ -405,7 +408,9 @@ public class MainController {
         task.setOnFailed(ev -> {
             Throwable ex = task.getException();
             item.setStatus("error: " + (ex!=null?ex.getMessage():"unknown"));
+            updateSumLabel(); // << NEU
         });
+        task.setOnSucceeded(ev -> updateSumLabel()); // << NEU
         executor.submit(task);
     }
 
@@ -419,7 +424,10 @@ public class MainController {
                         DBManager.createTableLikeSource(src, sourceCfg.getSchema(), dst, targetCfg.getSchema(), table);
                         Platform.runLater(() -> item.setStatus("target created"));
                     } else Platform.runLater(() -> item.setStatus("target exists"));
-                    Platform.runLater(() -> runCountsForItems(List.of(item)));
+                    Platform.runLater(() -> {
+                        runCountsForItems(List.of(item));
+                        updateSumLabel(); // << NEU
+                    });
                 } catch (Exception ex) {
                     Platform.runLater(() -> item.setStatus("create failed: " + ex.getMessage()));
                 }
@@ -479,14 +487,15 @@ public class MainController {
                         itemRef.setStatus("deleted " + affected + " (target)");
                         if (remainingRef >= 0) itemRef.setDstCount(Long.toString(remainingRef));
                         itemRef.setProgress(0);
+                        updateSumLabel(); // << NEU
                     });
                 } catch (Exception ex) {
-                    Platform.runLater(() -> { itemRef.setDeleting(false); itemRef.setStatus("delete failed: " + ex.getMessage()); });
+                    Platform.runLater(() -> { itemRef.setDeleting(false); itemRef.setStatus("delete failed: " + ex.getMessage()); updateSumLabel(); }); // << NEU
                 }
                 return null;
             }
         };
-        delTask.setOnFailed(ev -> { itemRef.setDeleting(false); itemRef.setStatus("delete failed: " + delTask.getException().getMessage()); });
+        delTask.setOnFailed(ev -> { itemRef.setDeleting(false); itemRef.setStatus("delete failed: " + delTask.getException().getMessage()); updateSumLabel(); }); // << NEU
         executor.submit(delTask);
     }
 
@@ -515,6 +524,7 @@ public class MainController {
         }
         overviewTable.scrollTo(tableModels.size() - 1);
         if (!newly.isEmpty()) runCountsForItems(newly);
+        updateSumLabel(); // << NEU
     }
 
     private void addAllToOverview() {
@@ -539,17 +549,20 @@ public class MainController {
         }
         overviewTable.scrollTo(tableModels.size() - 1);
         if (!newly.isEmpty()) runCountsForItems(newly);
+        updateSumLabel(); // << NEU
     }
 
     private void removeSelectedFromOverview() {
         var selItems = new ArrayList<>(overviewTable.getSelectionModel().getSelectedItems());
         tableModels.removeAll(selItems);
         overviewTable.refresh();
+        updateSumLabel(); // << NEU
     }
 
     private void clearOverview() {
         tableModels.clear();
         overviewTable.refresh();
+        updateSumLabel(); // << NEU
     }
 
     // --- Zähl-/Größen-Tasks --------------------------------------------------
@@ -564,39 +577,21 @@ public class MainController {
                     try (Connection src = DBManager.open(sourceCfg)) {
                         final String where = WhereStore.loadWhere(sourceCfg.getSchema(), tbl);
 
-
-
-                        /*
-                        final long c = DBManager.countRows(src, sourceCfg.getSchema(), tbl, where);
-                        Platform.runLater(() -> item.setSrcCount(Long.toString(c)));
-
-                        long bytes = DBManager.getTableSizeBytes(src, tbl);
-                        String nice = DBManager.humanReadableBytes(bytes);
-                        Platform.runLater(() -> item.setSize(nice));
-                        */
-
                         DBManager.CountAndSize cs =
                                 DBManager.getCountAndSizeFromSource(src, sourceCfg.getSchema(), tbl, where);
 
                         Platform.runLater(() -> {
                             item.setSrcCount(Long.toString(cs.rowCount));
-                            //item.setSize(DBManager.humanReadableBytes(cs.totalBytes));
-
-                          //  System.out.println("Tabelle: " + item.getTableName());
-                          //  System.out.println("Size in Bytes: " + cs.totalBytes);
                             double mb = cs.totalBytes / (1024.0 * 1024.0);
                             item.setSizeMB(mb);
-
-
+                            updateSumLabel(); // << NEU
                         });
-
-
 
                     } catch (Exception ex) {
                         Platform.runLater(() -> item.setSrcCount("error"));
                         Platform.runLater(() -> item.setSize("n/a"));
                         System.out.println("Fehler: " + ex.getMessage());
-
+                        Platform.runLater(() -> updateSumLabel()); // << NEU
                     }
                     // Ziel zählen
                     try (Connection dst = DBManager.open(targetCfg)) {
@@ -605,12 +600,10 @@ public class MainController {
                         if (!exists) {
                             Platform.runLater(() -> {
                                 item.setDstCount("table not exists");
-
                             });
                         } else {
                             final long c2 = DBManager.countRows(dst, targetCfg.getSchema(), tbl, where2);
                             Platform.runLater(() -> item.setDstCount(Long.toString(c2)));
-
                         }
                     } catch (Exception ex) {
                         Platform.runLater(() -> item.setDstCount("error"));
@@ -621,6 +614,19 @@ public class MainController {
             };
             executor.submit(t);
         }
+    }
+
+    // --- Summe für "Größe" (MB) ---------------------------------------------
+
+    private void updateSumLabel() {
+        if (sumLabel == null) return; // falls FXML noch nicht ergänzt
+        double sum = overviewTable.getItems().stream()
+                .mapToDouble(item -> {
+                    Number n = item.sizeMBProperty().get();
+                    return n == null ? 0.0 : n.doubleValue();
+                })
+                .sum();
+        sumLabel.setText(String.format("Summe Größe: %.2f MB", sum));
     }
 
     // --- Dialog-Helfer -------------------------------------------------------

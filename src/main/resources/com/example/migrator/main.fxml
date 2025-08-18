@@ -72,6 +72,11 @@
 
                     </columns>
                 </TableView>
+
+                <!-- Summenanzeige nur für "Größe" -->
+                <Label fx:id="sumLabel" text="Summe Größe: 0 MB"
+                       style="-fx-font-weight: bold;"/>
+
             </children>
         </VBox>
     </center>
