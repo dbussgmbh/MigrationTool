@@ -46,9 +46,7 @@ public class MainController {
     @FXML private TableColumn<TableItem, Number> colSize;
     @FXML private TableColumn<TableItem, Void> colAction;
 
-    // *** NEU: Summen-Label unter der Tabelle ***
-    // In deiner FXML unterhalb der TableView einfügen:
-    // <Label fx:id="sumLabel" text="Summe Größe: 0 MB" style="-fx-font-weight: bold;" />
+    // Summenlabel (in FXML unterhalb der Tabelle hinzufügen)
     @FXML private Label sumLabel;
 
     // Datenmodelle
@@ -104,6 +102,10 @@ public class MainController {
         colStatus.setCellValueFactory(c -> c.getValue().statusProperty());
         colSize.setCellValueFactory(c -> c.getValue().sizeMBProperty());
 
+        // "CNT Quelle" & "CNT Ziel" numerisch sortieren (Sonderwerte ans Ende)
+        colSrcCount.setComparator(MainController::compareCountStringsAsLong);
+        colDstCount.setComparator(MainController::compareCountStringsAsLong);
+
         // Progress als ProgressBar rendern
         colProgress.setCellFactory(tc -> new TableCell<>() {
             private final ProgressBar bar = new ProgressBar(0);
@@ -118,7 +120,6 @@ public class MainController {
             }
         });
 
-        // Größe formatieren
         colSize.setCellFactory(tc -> new TableCell<>() {
             @Override
             protected void updateItem(Number v, boolean empty) {
@@ -148,7 +149,7 @@ public class MainController {
         // Kontextmenü für WHERE
         addWhereContextMenuOnOverview();
 
-        // --- NEU: Summe automatisch aktualisieren ---
+        // Summe automatisch aktualisieren
         tableModels.addListener((ListChangeListener<TableItem>) c -> updateSumLabel());
         updateSumLabel(); // initial
 
@@ -408,9 +409,13 @@ public class MainController {
         task.setOnFailed(ev -> {
             Throwable ex = task.getException();
             item.setStatus("error: " + (ex!=null?ex.getMessage():"unknown"));
-            updateSumLabel(); // << NEU
+            updateSumLabel();
+            overviewTable.sort(); // falls nach CNT/Size sortiert ist
         });
-        task.setOnSucceeded(ev -> updateSumLabel()); // << NEU
+        task.setOnSucceeded(ev -> {
+            updateSumLabel();
+            overviewTable.sort();
+        });
         executor.submit(task);
     }
 
@@ -426,7 +431,8 @@ public class MainController {
                     } else Platform.runLater(() -> item.setStatus("target exists"));
                     Platform.runLater(() -> {
                         runCountsForItems(List.of(item));
-                        updateSumLabel(); // << NEU
+                        updateSumLabel();
+                        overviewTable.sort();
                     });
                 } catch (Exception ex) {
                     Platform.runLater(() -> item.setStatus("create failed: " + ex.getMessage()));
@@ -487,15 +493,26 @@ public class MainController {
                         itemRef.setStatus("deleted " + affected + " (target)");
                         if (remainingRef >= 0) itemRef.setDstCount(Long.toString(remainingRef));
                         itemRef.setProgress(0);
-                        updateSumLabel(); // << NEU
+                        updateSumLabel();
+                        overviewTable.sort();
                     });
                 } catch (Exception ex) {
-                    Platform.runLater(() -> { itemRef.setDeleting(false); itemRef.setStatus("delete failed: " + ex.getMessage()); updateSumLabel(); }); // << NEU
+                    Platform.runLater(() -> {
+                        itemRef.setDeleting(false);
+                        itemRef.setStatus("delete failed: " + ex.getMessage());
+                        updateSumLabel();
+                        overviewTable.sort();
+                    });
                 }
                 return null;
             }
         };
-        delTask.setOnFailed(ev -> { itemRef.setDeleting(false); itemRef.setStatus("delete failed: " + delTask.getException().getMessage()); updateSumLabel(); }); // << NEU
+        delTask.setOnFailed(ev -> {
+            itemRef.setDeleting(false);
+            itemRef.setStatus("delete failed: " + delTask.getException().getMessage());
+            updateSumLabel();
+            overviewTable.sort();
+        });
         executor.submit(delTask);
     }
 
@@ -524,7 +541,8 @@ public class MainController {
         }
         overviewTable.scrollTo(tableModels.size() - 1);
         if (!newly.isEmpty()) runCountsForItems(newly);
-        updateSumLabel(); // << NEU
+        updateSumLabel();
+        overviewTable.sort();
     }
 
     private void addAllToOverview() {
@@ -549,20 +567,23 @@ public class MainController {
         }
         overviewTable.scrollTo(tableModels.size() - 1);
         if (!newly.isEmpty()) runCountsForItems(newly);
-        updateSumLabel(); // << NEU
+        updateSumLabel();
+        overviewTable.sort();
     }
 
     private void removeSelectedFromOverview() {
         var selItems = new ArrayList<>(overviewTable.getSelectionModel().getSelectedItems());
         tableModels.removeAll(selItems);
         overviewTable.refresh();
-        updateSumLabel(); // << NEU
+        updateSumLabel();
+        overviewTable.sort();
     }
 
     private void clearOverview() {
         tableModels.clear();
         overviewTable.refresh();
-        updateSumLabel(); // << NEU
+        updateSumLabel();
+        overviewTable.sort();
     }
 
     // --- Zähl-/Größen-Tasks --------------------------------------------------
@@ -584,29 +605,37 @@ public class MainController {
                             item.setSrcCount(Long.toString(cs.rowCount));
                             double mb = cs.totalBytes / (1024.0 * 1024.0);
                             item.setSizeMB(mb);
-                            updateSumLabel(); // << NEU
+                            updateSumLabel();
+                            overviewTable.sort(); // falls nach CNT/Size sortiert ist
                         });
 
                     } catch (Exception ex) {
                         Platform.runLater(() -> item.setSrcCount("error"));
                         Platform.runLater(() -> item.setSize("n/a"));
                         System.out.println("Fehler: " + ex.getMessage());
-                        Platform.runLater(() -> updateSumLabel()); // << NEU
+                        Platform.runLater(() -> {
+                            updateSumLabel();
+                            overviewTable.sort();
+                        });
                     }
                     // Ziel zählen
                     try (Connection dst = DBManager.open(targetCfg)) {
                         final String where2 = WhereStore.loadWhere(sourceCfg.getSchema(), tbl);
                         final boolean exists = DBManager.tableExists(dst, targetCfg.getSchema(), tbl);
                         if (!exists) {
-                            Platform.runLater(() -> {
-                                item.setDstCount("table not exists");
-                            });
+                            Platform.runLater(() -> item.setDstCount("table not exists"));
                         } else {
                             final long c2 = DBManager.countRows(dst, targetCfg.getSchema(), tbl, where2);
-                            Platform.runLater(() -> item.setDstCount(Long.toString(c2)));
+                            Platform.runLater(() -> {
+                                item.setDstCount(Long.toString(c2));
+                                overviewTable.sort(); // numerische Sortierung anwenden
+                            });
                         }
                     } catch (Exception ex) {
-                        Platform.runLater(() -> item.setDstCount("error"));
+                        Platform.runLater(() -> {
+                            item.setDstCount("error");
+                            overviewTable.sort();
+                        });
                         System.out.println("Fehler: " + ex.getMessage());
                     }
                     return null;
@@ -627,6 +656,28 @@ public class MainController {
                 })
                 .sum();
         sumLabel.setText(String.format("Summe Größe: %.2f MB", sum));
+    }
+
+    // --- Hilfsfunktionen: numerische Sortierung für String-Spalten ----------
+
+    private static Long tryParseLong(String s) {
+        if (s == null) return null;
+        String t = s.trim();
+        if (t.isEmpty()) return null;
+        if (!t.matches("^-?\\d+$")) return null;
+        try { return Long.parseLong(t); } catch (NumberFormatException ex) { return null; }
+    }
+
+    /** Zahlen zuerst (numerisch), Nicht-Zahlen zuletzt (alphabetisch, Nulls ganz zuletzt). */
+    private static int compareCountStringsAsLong(String a, String b) {
+        Long la = tryParseLong(a);
+        Long lb = tryParseLong(b);
+        if (la != null && lb != null) return Long.compare(la, lb);
+        if (la != null) return -1;           // a ist Zahl, b nicht -> a vor b
+        if (lb != null) return 1;            // b ist Zahl, a nicht -> b vor a
+        if (a == null) return (b == null) ? 0 : 1;  // Nulls zuletzt
+        if (b == null) return -1;
+        return a.compareToIgnoreCase(b);     // beide keine Zahl -> alphabetisch
     }
 
     // --- Dialog-Helfer -------------------------------------------------------
