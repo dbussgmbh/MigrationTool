@@ -103,10 +103,52 @@ public class DBManager {
         }
     }
 
+    private static void log(String s) { System.out.println("[copyTable] " + s); }
+
+    private static String getConName(Connection c) {
+        try (var st = c.createStatement();
+             var rs = st.executeQuery("select sys_context('USERENV','CON_NAME') from dual")) {
+            rs.next();
+            return rs.getString(1);
+        } catch (SQLException e) { return "unknown"; }
+    }
+
+    private static boolean existsTableInPdb(Connection c, String owner, String table) {
+        String sql = "select 1 from all_tables where owner=? and table_name=?";
+        try (var ps = c.prepareStatement(sql)) {
+            ps.setString(1, owner);
+            ps.setString(2, table);
+            try (var rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            return false;
+        }
+    }
+
     public static void copyTable(Connection src, String srcSchema, Connection dst, String dstSchema, String table,
                                  String whereClause, int commitBatch, ProgressListener listener, StopSignal stop) throws SQLException {
         String fqSrc = srcSchema + "." + table;
         String fqDst = dstSchema + "." + table;
+
+
+        log("Starte copyTable: SRC=" + fqSrc + " (PDB=" + getConName(src) +
+                ") → DST=" + fqDst + " (PDB=" + getConName(dst) + ")");
+
+        // --- Diagnose: Container/PDB anzeigen
+        log("SRC CON_NAME=" + getConName(src) + ", DST CON_NAME=" + getConName(dst));
+
+        // --- Diagnose: Existiert Quelle/Ziel in dieser PDB?
+        if (!existsTableInPdb(src, srcSchema, table)) {
+            throw new SQLException("Quelle nicht in dieser PDB sichtbar: " + fqSrc +
+                    " (prüfe Synonym/DB-Link/PDB-Service)");
+        }
+        if (!existsTableInPdb(dst, dstSchema, table)) {
+            log("Zieltabelle " + fqDst + " ist (noch) nicht sichtbar – wird vermutlich gleich existieren.");
+        }
+
+
+
         src.setAutoCommit(false);
         dst.setAutoCommit(false);
 
@@ -118,6 +160,10 @@ public class DBManager {
         String sel = "SELECT " + String.join(",", cols) + " FROM " + fqSrc + (whereClause!=null && !whereClause.isBlank() ? " WHERE " + whereClause : "");
         String placeholders = String.join(",", java.util.Collections.nCopies(cols.size(), "?"));
         String ins = "INSERT INTO " + fqDst + " (" + String.join(",", cols) + ") VALUES (" + placeholders + ")";
+
+
+        log("Select-SQL: " + sel);
+        log("Insert-SQL: " + ins);
 
         long transferred = 0;
         long started = System.nanoTime();
@@ -132,14 +178,20 @@ public class DBManager {
                     for (int i = 0; i < cols.size(); i++) pin.setObject(i+1, rs.getObject(i+1));
                     pin.addBatch();
                     batch++; transferred++;
+
+                    if (transferred % 10000 == 0) {
+                        log("Zwischenstand: " + transferred + " Zeilen kopiert...");
+                    }
+
                     if (batch >= commitBatch) {
                         pin.executeBatch(); dst.commit(); batch = 0;
                         double sec = (System.nanoTime()-started)/1_000_000_000.0;
                         double rate = Math.round(sec>0 ? transferred/sec : 0);
+                        log("Commit nach " + transferred + " Zeilen. Rate=" + rate + " rows/s");
                         if (listener != null) listener.onBatch(transferred, rate);
                     }
                 }
-                if (batch>0) { pin.executeBatch(); dst.commit(); }
+                if (batch>0) { pin.executeBatch(); dst.commit();  log("Final Commit nach " + transferred + " Zeilen.");}
             }
         }
     }
@@ -178,14 +230,17 @@ public class DBManager {
         // Add PK
         String pkDdl = buildAddPkDDL(src, srcSchema, dstSchema, table);
         if (pkDdl != null) {
+            log("Executing DDL: " + pkDdl);
             try (Statement st = dst.createStatement()) { st.executeUpdate(pkDdl); dst.commit(); } catch (SQLException ex) { /* ignore */ }
         }
         // Indexes
         for (String idxDdl : buildCreateIndexesDDL(src, srcSchema, dstSchema, table)) {
+            log("Executing DDL: " + idxDdl);
             try (Statement st = dst.createStatement()) { st.executeUpdate(idxDdl); dst.commit(); } catch (SQLException ex) { /* ignore */ }
         }
         // FKs
         for (String fkDdl : buildAddFksDDL(src, srcSchema, dstSchema, table)) {
+            log("Executing DDL: " + fkDdl);
             try (Statement st = dst.createStatement()) { st.executeUpdate(fkDdl); dst.commit(); } catch (SQLException ex) { /* ignore */ }
         }
     }

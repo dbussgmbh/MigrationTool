@@ -34,6 +34,7 @@ public class MigrationTask extends Task<Void> {
             item.setStatus("done");
         } catch (Exception ex) {
             item.setStatus("failed: " + ex.getMessage());
+            System.out.println("Fehler beim Migrate " + ex.getMessage());
             throw ex;
         }
         return null;
