@@ -126,6 +126,159 @@ public class DBManager {
         }
     }
 
+
+    public static void copyTable(Connection src, String srcSchema, Connection dst, String dstSchema, String table,
+                                 String whereClause, int commitBatch, ProgressListener listener, StopSignal stop) throws SQLException {
+        String fqSrc = srcSchema + "." + table;
+        String fqDst = dstSchema + "." + table;
+
+        log("Starte copyTable: SRC=" + fqSrc + " (PDB=" + getConName(src) + ") → DST=" + fqDst + " (PDB=" + getConName(dst) + ")"
+                + (whereClause != null && !whereClause.isBlank() ? " WHERE " + whereClause : ""));
+
+        src.setAutoCommit(false);
+        dst.setAutoCommit(false);
+
+        // 1) Spalten & Quelltypen bestimmen
+        List<String> cols = new ArrayList<>();
+        List<Integer> srcJdbcTypes = new ArrayList<>();
+        List<String> srcTypeNames  = new ArrayList<>();
+
+        try (Statement st = src.createStatement();
+             ResultSet rs = st.executeQuery("SELECT * FROM " + fqSrc + " WHERE 1=0")) {
+            ResultSetMetaData md = rs.getMetaData();
+            for (int i = 1; i <= md.getColumnCount(); i++) {
+                cols.add(md.getColumnName(i));
+                srcJdbcTypes.add(md.getColumnType(i));      // java.sql.Types
+                srcTypeNames.add(md.getColumnTypeName(i));  // Oracle-Name (z. B. LONG, CLOB, BLOB, VARCHAR2)
+            }
+        }
+
+        // 2) Zieltypen bestimmen (anhand Ziel-Connection)
+        //    Hinweis: wir verwenden ALL_TAB_COLUMNS, weil es konsistent zu deinem restlichen Code passt
+        Map<String,String> dstTypeByCol = new HashMap<>();
+        String typeSql = "SELECT column_name, data_type FROM all_tab_columns WHERE owner=? AND table_name=?";
+        try (PreparedStatement ps = dst.prepareStatement(typeSql)) {
+            ps.setString(1, dstSchema.toUpperCase());
+            ps.setString(2, table.toUpperCase());
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    dstTypeByCol.put(rs.getString(1).toUpperCase(), rs.getString(2).toUpperCase());
+                }
+            }
+        }
+
+        // 3) Select-Liste bauen – LONG/LONG RAW als LOB konvertieren (TO_LOB)
+        List<String> selExpr = new ArrayList<>();
+        for (int i = 0; i < cols.size(); i++) {
+            String c = cols.get(i);
+            String srcType = srcTypeNames.get(i).toUpperCase();
+            String dstType = dstTypeByCol.getOrDefault(c.toUpperCase(), "");
+            if (srcType.contains("LONG")) {
+                // LONG → TO_LOB(...) als CLOB / LONG RAW → nicht möglich per TO_LOB, meist als RAW lesen + BLOB schreiben
+                if (srcType.equals("LONG") && (dstType.equals("CLOB") || dstType.equals("NCLOB"))) {
+                    selExpr.add("TO_LOB(" + c + ") " + c);
+                } else {
+                    // Fallback: ohne Umwandlung, wir lesen später als Stream
+                    selExpr.add(c);
+                }
+            } else {
+                selExpr.add(c);
+            }
+        }
+
+        String whereSql = (whereClause != null && !whereClause.isBlank()) ? " WHERE " + whereClause : "";
+        String sel = "SELECT " + String.join(",", selExpr) + " FROM " + fqSrc + whereSql;
+        String placeholders = String.join(",", java.util.Collections.nCopies(cols.size(), "?"));
+        String ins = "INSERT INTO " + fqDst + " (" + String.join(",", cols) + ") VALUES (" + placeholders + ")";
+
+        log("Select-SQL: " + sel);
+        log("Insert-SQL: " + ins);
+
+        long transferred = 0;
+        long started = System.nanoTime();
+
+        try (PreparedStatement pin = dst.prepareStatement(ins);
+             Statement sst = src.createStatement(ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            sst.setFetchSize(1000);
+
+            try (ResultSet rs = sst.executeQuery(sel)) {
+                int batch = 0;
+                ResultSetMetaData md = rs.getMetaData();
+
+                while (rs.next()) {
+                    if (stop != null && stop.isStopped()) { dst.rollback(); throw new SQLException("stopped"); }
+
+                    for (int i = 0; i < cols.size(); i++) {
+                        String col = cols.get(i);
+                        String dstType = dstTypeByCol.getOrDefault(col.toUpperCase(), "");
+                        int srcJdbc = md.getColumnType(i + 1);          // tatsächlicher Typ dieses SELECTs (nach TO_LOB evtl. CLOB)
+                        String srcTypeName = md.getColumnTypeName(i+1).toUpperCase();
+
+                        // LOB-Handling
+                        if (dstType.equals("CLOB") || dstType.equals("NCLOB")) {
+                            // Character LOB
+                            java.io.Reader r = rs.getCharacterStream(i + 1);
+                            if (r == null) {
+                                pin.setNull(i + 1, java.sql.Types.CLOB);
+                            } else {
+                                // Länge ist bei Streams optional (JDBC 4.0), Oracle-Treiber kann ohne Length umgehen
+                                pin.setCharacterStream(i + 1, r);
+                            }
+                        } else if (dstType.equals("BLOB")) {
+                            // Binary LOB
+                            java.io.InputStream is = rs.getBinaryStream(i + 1);
+                            if (is == null) {
+                                pin.setNull(i + 1, java.sql.Types.BLOB);
+                            } else {
+                                pin.setBinaryStream(i + 1, is);
+                            }
+                        } else {
+                            // Standardtypen
+                            // Tipp: DATE/TIMESTAMP explizit mappen, um Überraschungen zu vermeiden
+                            switch (srcJdbc) {
+                                case Types.DATE -> pin.setDate(i + 1, rs.getDate(i + 1));
+                                case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> pin.setTimestamp(i + 1, rs.getTimestamp(i + 1));
+                                case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY -> {
+                                    byte[] b = rs.getBytes(i + 1);
+                                    if (b == null) pin.setNull(i + 1, Types.VARBINARY);
+                                    else pin.setBytes(i + 1, b);
+                                }
+                                default -> {
+                                    Object v = rs.getObject(i + 1);
+                                    if (v == null) pin.setNull(i + 1, Types.NULL);
+                                    else pin.setObject(i + 1, v);
+                                }
+                            }
+                        }
+                    }
+
+                    pin.addBatch();
+                    batch++; transferred++;
+
+                    if (transferred % 10000 == 0) {
+                        log("Zwischenstand: " + transferred + " Zeilen kopiert...");
+                    }
+
+                    if (batch >= commitBatch) {
+                        pin.executeBatch();
+                        dst.commit();
+                        batch = 0;
+
+                        double sec = (System.nanoTime() - started) / 1_000_000_000.0;
+                        double rate = Math.round(sec > 0 ? transferred / sec : 0);
+                        if (listener != null) listener.onBatch(transferred, rate);
+                    }
+                }
+                if (batch > 0) {
+                    pin.executeBatch();
+                    dst.commit();
+                }
+            }
+        }
+    }
+
+
+    /*
     public static void copyTable(Connection src, String srcSchema, Connection dst, String dstSchema, String table,
                                  String whereClause, int commitBatch, ProgressListener listener, StopSignal stop) throws SQLException {
         String fqSrc = srcSchema + "." + table;
@@ -195,6 +348,10 @@ public class DBManager {
             }
         }
     }
+
+
+     */
+
 
    // public static int deleteRowsInBatches(Connection conn, String schema, String table, String whereClause, int batchSize, DeleteListener listener) throws SQLException {
    public static int deleteRowsInBatches(Connection conn, String schema, String table, String whereClause, int batchSize, DeleteListener listener, StopSignal stop) throws SQLException {
